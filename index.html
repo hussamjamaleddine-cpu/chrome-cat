@@ -480,6 +480,13 @@ const CB=768;
 const MAX_CHARACTERS=6, PERSIST_PX=512;
 const charBuf=document.createElement('canvas'); charBuf.width=charBuf.height=CB;
 const charGlow=document.createElement('canvas'); charGlow.width=charGlow.height=CB;
+let videoFilterSupported=false;
+(function probeVideoFilter(){
+  try{
+    const scratch=document.createElement('canvas').getContext('2d');
+    if(scratch){ scratch.filter='grayscale(1)'; videoFilterSupported=scratch.filter!=='none'; }
+  }catch(e){ videoFilterSupported=false; }
+})();
 const characters=[];             // {type:'image',buf,glow,img} | {type:'video',el,thumb,url}
 let activeChar=-1, activeVideoEl=null, pendingCharacters=0;
 function reserveCharacterSlot(){
@@ -618,10 +625,18 @@ function updateVideoFrame(){
   const g=charBuf.getContext('2d');
   g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,CB,CB);
   g.save();
-  g.filter='grayscale(1) contrast('+(1.05+cst*0.35)+') brightness(1.05)';
+  if(videoFilterSupported) g.filter='grayscale(1) contrast('+(1.05+cst*0.35)+') brightness(1.05)';
   const scale=Math.max(CB/vw,CB/vh), dw=vw*scale, dh=vh*scale;
   g.drawImage(activeVideoEl,(CB-dw)/2,(CB-dh)/2,dw,dh);
   g.restore();
+  if(!videoFilterSupported){
+    g.save();
+    g.globalCompositeOperation='source-in';
+    const gray=Math.round(Math.max(128,Math.min(220,174+cst*18)));
+    g.fillStyle='rgb('+gray+','+Math.min(255,gray+6)+','+Math.min(255,gray+12)+')';
+    g.fillRect(0,0,CB,CB);
+    g.restore();
+  }
   g.globalCompositeOperation='destination-in';
   g.drawImage(videoMask,0,0);
   g.globalCompositeOperation='source-over';

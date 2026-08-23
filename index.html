@@ -200,14 +200,26 @@ const sensEl=$('sens'), punchEl=$('punch'), chaosEl=$('chaos'), holdEl=$('hold')
 
 /* ---------------- resolution ladder (9:16 always) ---------------- */
 const RES=[[360,640],[480,854],[600,1066],[720,1280],[1080,1920]];
-let resIdx=4, W=1080, H=1920;
+let resIdx=4, W=1080, H=1920, renderDpr=1;
+function getRenderDpr(){
+  if(isTouch || !matchMedia('(min-width:900px) and (min-height:700px)').matches) return 1;
+  return Math.min(window.devicePixelRatio||1,2);
+}
+function syncCanvasBacking(){
+  const next=Math.max(1,getRenderDpr());
+  const bw=Math.max(1,Math.round(W*next)), bh=Math.max(1,Math.round(H*next));
+  if(cvs.width===bw && cvs.height===bh && renderDpr===next) return;
+  renderDpr=next;
+  cvs.width=bw; cvs.height=bh;
+  ctx.setTransform(renderDpr,0,0,renderDpr,0,0);
+}
 function setRes(i){
   resIdx=Math.max(0,Math.min(RES.length-1,i));
   W=RES[resIdx][0]; H=RES[resIdx][1];
-  cvs.width=W; cvs.height=H;
-  buildVignette(); fitBox();
+  syncCanvasBacking(); buildVignette(); fitBox();
 }
 function fitBox(){
+  syncCanvasBacking();
   const r=stage.getBoundingClientRect();
   const s=Math.min(r.width/9,r.height/16);
   cvs.style.width=Math.floor(s*9)+'px';
@@ -1466,7 +1478,7 @@ function frame(t){
       for(let i=0;i<n;i++){
         if(Math.random()<0.5) continue;
         const off=(Math.random()-0.5)*W*0.35*(trans/12);
-        ctx.drawImage(cvs,0,i*sh,W,sh,off,i*sh,W,sh);
+        ctx.drawImage(cvs,0,i*sh*renderDpr,W*renderDpr,sh*renderDpr,off,i*sh,W,sh);
       }
     } else if(transType==='claw'){
       ctx.save();

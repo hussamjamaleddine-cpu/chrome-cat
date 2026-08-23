@@ -636,8 +636,8 @@ function applyVideoGrayFallback(g,cst,size){
   g.fillStyle='hsl(0,0%,50%)';
   g.fillRect(0,0,size,size);
   g.globalCompositeOperation='overlay';
-  g.globalAlpha=Math.max(0,Math.min(0.5,(cst-1)*0.35));
-  g.fillStyle='#808080';
+  g.globalAlpha=Math.min(0.45,Math.abs(cst-1)*0.35);
+  g.fillStyle=cst>=1?'#fff':'#000';
   g.fillRect(0,0,size,size);
   g.globalAlpha=1;
   g.restore();
@@ -777,6 +777,9 @@ function persistImages(){
       const at=characters.indexOf(slot); if(at<0) return;
       try{
         const tg=slot.thumb.getContext('2d');
+        tg.clearRect(0,0,92,92);
+        tg.fillStyle='#000';
+        tg.fillRect(0,0,92,92);
         if(videoFilterSupported) tg.filter='grayscale(1) contrast(1.4)';
         tg.drawImage(video,0,0,92,92);
         if(videoFilterSupported) tg.filter='none';

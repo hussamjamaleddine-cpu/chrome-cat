@@ -4,25 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chrome Cat">
+<meta name="color-scheme" content="dark">
 <title>CHROME CAT</title>
 <style>
   :root{--silver:#B8BCC2;
     --display:"Haettenschweiler","Arial Narrow Bold","Impact",system-ui,sans-serif;
     --util:ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:#000;color:var(--silver);overscroll-behavior:none}
-  body{font-family:var(--util);display:flex;flex-direction:column;
-       padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
-  header{padding:10px 16px 6px;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-  h1{margin:0;font-family:var(--display);font-size:22px;letter-spacing:.16em;text-transform:uppercase;
+  html,body{margin:0;height:100%;min-height:100%;background:#000;color:var(--silver);overscroll-behavior:none;overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  body{font-family:var(--util);display:flex;flex-direction:column;min-height:100vh;min-height:100svh;min-height:100dvh;
+       padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  header{padding:10px calc(16px + env(safe-area-inset-right)) 6px calc(16px + env(safe-area-inset-left));display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  h1{margin:0;font-family:var(--display);font-size:clamp(18px,4.5vw,22px);letter-spacing:.16em;text-transform:uppercase;
      background:linear-gradient(180deg,#fff 0%,#9aa1a8 46%,#2b2f34 52%,#e8ecef 78%,#6d747b 100%);
      -webkit-background-clip:text;background-clip:text;color:transparent}
-  .meters{font-size:10px;letter-spacing:.18em;color:#4a5058;display:flex;gap:12px}
+  .meters{font-size:clamp(9px,2.4vw,10px);letter-spacing:.18em;color:#4a5058;display:flex;gap:clamp(8px,2.5vw,12px);margin-left:auto}
   .meters b{color:#fff;font-weight:400}
   #stage{position:relative;flex:1;min-height:0;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
-  canvas{display:block;background:#000;touch-action:none}
+  canvas{display:block;max-width:100%;max-height:100%;background:#000;touch-action:none}
   #hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-        gap:8px;text-align:center;padding:24px;pointer-events:none;font-size:12px;letter-spacing:.14em;
+        gap:8px;text-align:center;padding:24px;pointer-events:none;font-size:clamp(10px,2.8vw,12px);letter-spacing:.14em;
         color:#454b52;text-transform:uppercase}
   #hint span{color:#7c848c}
   #stage.drop-active{outline:2px solid #fff;outline-offset:-8px}
@@ -45,21 +50,21 @@
   body.perform #exit{display:block}
   body.perform.showui #exit{opacity:1}
   #floatctl{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom));left:50%;
-    transform:translateX(-50%);z-index:1000;display:none;gap:14px;opacity:0;transition:opacity .25s}
+    transform:translateX(-50%);z-index:1000;display:none;gap:14px;opacity:0;transition:opacity .25s;touch-action:manipulation}
   body.perform #floatctl{display:flex}
   body.perform.showui #floatctl{opacity:1}
   #floatctl button{width:56px;height:56px;border-radius:50%;border:1px solid #2a2f35;
-    background:rgba(0,0,0,.55);color:#fff;font-size:19px;backdrop-filter:blur(4px);cursor:pointer}
+    background:rgba(0,0,0,.55);color:#fff;font-size:19px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);cursor:pointer;touch-action:manipulation}
   #recF.on{border-color:#c8383f;color:#ff6b72;background:rgba(60,10,12,.65)}
-  #deck{padding:10px 12px 16px;border-top:1px solid #14171a;background:#050506;overflow-y:auto;max-height:52vh}
+  #deck{padding:10px calc(12px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));border-top:1px solid #14171a;background:#050506;overflow-y:auto;max-height:52vh;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
   .row{display:flex;gap:8px}
   .row + .row{margin-top:8px}
-  button,label.file{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-    padding:11px 6px;border-radius:10px;cursor:pointer;border:1px solid #24282d;
+  button,label.file{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;-webkit-appearance:none;appearance:none;
+    padding:10px 6px;border-radius:10px;cursor:pointer;border:1px solid #24282d;touch-action:manipulation;user-select:none;-webkit-user-select:none;
     background:linear-gradient(180deg,#1c1f23 0%,#0c0e10 100%);color:var(--silver);
     font-family:var(--util);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
   button:active,label.file:active{background:linear-gradient(180deg,#26292e,#131619)}
-  button:focus-visible,label.file:focus-within{outline:2px solid #fff;outline-offset:2px}
+  button:focus-visible,label.file:focus-within,input[type=range]:focus-visible{outline:2px solid #fff;outline-offset:2px}
   #play{flex:0 0 58px;border-color:#3a4046;color:#fff;background:linear-gradient(180deg,#33383e,#0e1113);font-size:15px;letter-spacing:0}
   .skip{flex:0 0 50px;letter-spacing:0}
   #rec.on{border-color:#c8383f;color:#ff6b72;background:linear-gradient(180deg,#2a1214,#0d0708)}
@@ -69,28 +74,34 @@
   #seek{width:100%}
   .times{display:flex;justify-content:space-between;margin-top:4px;font-size:10px;letter-spacing:.1em;color:#4d535a}
   .times b{color:#aeb4bb;font-weight:400;max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .slider{display:flex;align-items:center;gap:10px;margin-top:9px}
+  .slider{display:flex;align-items:center;gap:8px;min-height:44px;margin-top:7px}
   .slider label{font-size:10px;letter-spacing:.16em;color:#4d535a;text-transform:uppercase;flex:0 0 auto;width:44px}
-  input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:2px;border-radius:2px;background:linear-gradient(90deg,#3a4046,#0f1114)}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;
+  input[type=range]{flex:1;min-width:80px;-webkit-appearance:none;appearance:none;height:34px;border-radius:2px;background:linear-gradient(180deg,transparent 0 15px,#3a4046 15px 17px,transparent 17px);touch-action:pan-y}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;
     background:linear-gradient(180deg,#fff,#7f868d);border:1px solid #000}
   input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;border:1px solid #000;background:linear-gradient(180deg,#fff,#7f868d)}
-  .fxgrid{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  .chip{flex:0 0 auto;padding:8px 11px;border-radius:999px;border:1px solid #24282d;background:#0c0e10;
+  .fxgrid{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;overflow:visible}
+  .chip{flex:0 0 auto;min-height:44px;padding:8px 12px;border-radius:999px;border:1px solid #24282d;background:#0c0e10;
         color:#4d535a;font-size:10px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
   .chip.on{border-color:#6d747b;color:#fff;background:linear-gradient(180deg,#23272c,#0f1215)}
-  #catStrip{display:flex;gap:9px;margin-top:9px;overflow-x:auto;padding:3px 2px 5px}
-  .catThumb{position:relative;flex:0 0 auto;width:46px;height:46px;border-radius:50%;
+  #catStrip{display:flex;gap:9px;margin-top:9px;overflow-x:auto;padding:3px 2px 5px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .catThumb{position:relative;flex:0 0 auto;width:52px;height:52px;border-radius:50%;touch-action:manipulation;
     border:2px solid #24282d;overflow:hidden;background:#0c0e10;cursor:pointer}
   .catThumb.active{border-color:#fff;box-shadow:0 0 0 1px #fff}
   .catThumb canvas{width:100%;height:100%;display:block}
   .catThumb .tag{position:absolute;bottom:0;right:0;font-size:7px;letter-spacing:0;
     background:rgba(0,0,0,.75);color:#fff;padding:1px 3px;border-top-left-radius:5px}
-  .catThumb .rm{position:absolute;top:-5px;right:-5px;width:16px;height:16px;border-radius:50%;
-    background:#c8383f;color:#fff;font-size:10px;line-height:16px;text-align:center}
+  .catThumb .rm{position:absolute;top:-7px;right:-7px;width:24px;height:24px;min-height:24px;padding:0;border-radius:50%;
+    background:#c8383f;color:#fff;font-size:14px;line-height:20px;text-align:center;z-index:2}
   .lbl{margin-top:12px;font-size:9px;letter-spacing:.28em;color:#2f343a;text-transform:uppercase}
   .note{margin-top:10px;font-size:10px;letter-spacing:.06em;color:#33383e;line-height:1.6}
-  @media (min-width:620px){#deck{max-width:620px;margin:0 auto;width:100%}}
+  @media (min-width:620px){#deck{max-width:680px;margin:0 auto;width:100%}}
+  @media (min-width:900px) and (min-height:700px){#deck{max-height:46vh}}
+  @media (orientation:landscape) and (max-height:700px){#deck{max-height:43vh}.slider{min-height:38px;margin-top:3px}.chip{min-height:38px;padding-top:6px;padding-bottom:6px}}
+  @media (max-width:420px){header{padding-left:calc(10px + env(safe-area-inset-left));padding-right:calc(10px + env(safe-area-inset-right))}.row{gap:6px}.row + .row{margin-top:6px}.skip{flex-basis:46px}.slider label{width:42px}.slider output{flex-basis:54px}}
+  @media (max-width:360px){.row{flex-wrap:wrap}.row #play{flex-basis:52px}.row label.file{flex-basis:100%}.meters{width:100%;margin-left:0;justify-content:flex-end}.status{font-size:9px}}
+  @media (min-width:900px){#stage{min-height:0}.row{gap:10px}}
+  @media (hover:none){button:hover:not(:disabled),label.file:hover{transform:none}}
 </style>
 </head>
 <body>
@@ -166,6 +177,8 @@ const seek=$('seek'), tCur=$('tCur'), tDur=$('tDur'), back10=$('back10'), fwd10=
 const bpmEl=$('bpm'), fpsEl=$('fps'), trackName=$('trackName');
 const sensEl=$('sens'), punchEl=$('punch'), chaosEl=$('chaos'), holdEl=$('hold'), contrastEl=$('contrast');
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const isTouch='ontouchstart' in window||navigator.maxTouchPoints>0;
   const statusEl=$('status');
   const sliderOutputs={sens:$('sensVal'),punch:$('punchVal'),chaos:$('chaosVal'),hold:$('holdVal'),contrast:$('contrastVal')};
   let activeTrackUrl='';
@@ -201,6 +214,7 @@ function fitBox(){
   cvs.style.height=Math.floor(s*16)+'px';
 }
 addEventListener('resize',fitBox);
+if(window.visualViewport) window.visualViewport.addEventListener('resize',fitBox,{passive:true});
 addEventListener('orientationchange',()=>setTimeout(fitBox,120));
 
 /* ---------------- storage ---------------- */
@@ -266,7 +280,11 @@ let ac=null,analyser=null,srcNode=null,freq=null,recDest=null;
       analyser.fftSize=1024;                 // half the bins, same detection, less work
       analyser.smoothingTimeConstant=0.06;
       srcNode.connect(analyser); analyser.connect(ac.destination);
-      recDest=ac.createMediaStreamDestination(); srcNode.connect(recDest);
+      try{
+        if(ac.createMediaStreamDestination){
+          recDest=ac.createMediaStreamDestination(); srcNode.connect(recDest);
+        }
+      }catch(e){ recDest=null; }
       freq=new Uint8Array(analyser.frequencyBinCount);
       return true;
     }catch(err){
@@ -1410,7 +1428,7 @@ function frame(t){
 }
 
 /* ---------------- recording ---------------- */
-let recorder=null, chunks=[], recFps=30;
+let recorder=null, chunks=[], recFps=30, activeRecStream=null;
 function pickMime(){
   const list=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm',
               'video/mp4;codecs=h264,aac','video/mp4'];
@@ -1429,8 +1447,11 @@ let qModeBeforeRec=null, resIdxBeforeRec=4, liteBeforeRec=false;
   }
   async function startRec(){
     if(!au.src){ setStatus('Load a track before recording.','error'); return; }
-    if(!initAudio() || !recDest || !cvs.captureStream || !window.MediaRecorder){
+    if(!initAudio() || !cvs.captureStream || !window.MediaRecorder){
       setStatus('Recording is not supported in this browser.','error'); return;
+    }
+    if(!recDest){
+      setStatus('This browser can play the visualizer but cannot mix audio for recording.','error'); return;
     }
     if(recorder&&recorder.state==='recording') return;
     // exported clips should always be full quality, even if the live preview had
@@ -1442,7 +1463,9 @@ let qModeBeforeRec=null, resIdxBeforeRec=4, liteBeforeRec=false;
     let vs,mixed;
     try{
       vs=cvs.captureStream(recFps);
-      mixed=new MediaStream([...vs.getVideoTracks(),...recDest.stream.getAudioTracks()]);
+      const tracks=[...vs.getVideoTracks(),...recDest.stream.getAudioTracks()];
+      mixed=window.MediaStream?new MediaStream(tracks):vs;
+      if(mixed===vs) recDest.stream.getAudioTracks().forEach(track=>{ try{vs.addTrack(track);}catch(e){} });
     }catch(err){ restoreQualityAfterRec(); setStatus('Could not prepare the recording stream.','error'); return; }
     chunks=[];
     const opts={videoBitsPerSecond:8000000,audioBitsPerSecond:128000};
@@ -1450,15 +1473,24 @@ let qModeBeforeRec=null, resIdxBeforeRec=4, liteBeforeRec=false;
     try{ recorder=new MediaRecorder(mixed,opts); }
     catch(e){ try{ recorder=new MediaRecorder(mixed,{audioBitsPerSecond:128000}); }
               catch(e2){ try{ recorder=new MediaRecorder(mixed); }
-                catch(e3){ restoreQualityAfterRec(); setStatus('This browser cannot create a recording.','error'); return; } } }
+                catch(e3){ mixed.getTracks().forEach(track=>track.stop()); restoreQualityAfterRec(); setStatus('This browser cannot create a recording.','error'); return; } } }
+    activeRecStream=mixed;
     recorder.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
     recorder.onstop=()=>{
-      mixed.getTracks().forEach(track=>track.stop());
+      const stream=activeRecStream; activeRecStream=null;
+      if(stream) stream.getTracks().forEach(track=>track.stop());
       saveClip(new Blob(chunks,{type:recorder.mimeType||mime||'video/webm'}));
     };
-    recorder.onerror=()=>{ syncRec(false); setStatus('Recording stopped unexpectedly.','error'); };
+    recorder.onerror=()=>{
+      const stream=activeRecStream; activeRecStream=null;
+      if(stream) stream.getTracks().forEach(track=>track.stop());
+      recorder=null; restoreQualityAfterRec(); syncRec(false); setStatus('Recording stopped unexpectedly.','error');
+    };
     try{ recorder.start(1000); syncRec(true); setStatus('Recording… tap Stop when ready','busy'); }
-    catch(err){ recorder=null; restoreQualityAfterRec(); syncRec(false); setStatus('Could not start recording.','error'); }
+    catch(err){
+      if(activeRecStream){ activeRecStream.getTracks().forEach(track=>track.stop()); activeRecStream=null; }
+      recorder=null; restoreQualityAfterRec(); syncRec(false); setStatus('Could not start recording.','error');
+    }
   }
 
 function stopRec(){
@@ -1488,6 +1520,22 @@ function stopRec(){
       }catch(e){ if(B.abortFile) B.abortFile(); }
     }
     const url=URL.createObjectURL(blob);
+    if(isIOS&&navigator.share){
+      try{
+        const file=new File([blob],name,{type:blob.type||'video/mp4'});
+        if(!navigator.canShare||navigator.canShare({files:[file]})){
+          await navigator.share({files:[file],title:'Chrome Cat recording'});
+          setStatus('Recording shared successfully','success');
+          URL.revokeObjectURL(url); return;
+        }
+      }catch(e){ if(e&&e.name==='AbortError'){ URL.revokeObjectURL(url); setStatus('Recording ready. Sharing was cancelled.',''); return; } }
+    }
+    if(isIOS){
+      const opened=window.open(url,'_blank');
+      setStatus(opened?'Recording ready · use Share to save the video':'Recording ready · use the browser Share menu to save it','success');
+      setTimeout(()=>URL.revokeObjectURL(url),12000);
+      return;
+    }
     const a=document.createElement('a'); a.href=url; a.download=name;
     document.body.appendChild(a); a.click(); a.remove();
     setStatus('Recording downloaded as '+name,'success');
@@ -1690,10 +1738,12 @@ stage.addEventListener('pointerdown',()=>{
   lastTapT=now;
   if(document.body.classList.contains('perform')) flashUI();
 });
-  document.addEventListener('fullscreenchange',()=>{
-    if(!document.fullscreenElement&&document.body.classList.contains('perform')) document.body.classList.remove('perform','showui');
+  function syncFullscreenState(){
+    if(!document.fullscreenElement&&!document.webkitFullscreenElement&&document.body.classList.contains('perform')) document.body.classList.remove('perform','showui');
     setTimeout(fitBox,60);
-  });
+  }
+  document.addEventListener('fullscreenchange',syncFullscreenState);
+  document.addEventListener('webkitfullscreenchange',syncFullscreenState);
   document.addEventListener('keydown',e=>{
     const target=e.target;
     if(e.defaultPrevented||target.closest?.('button,label,input,select,textarea,[contenteditable="true"]')) return;
@@ -1704,10 +1754,12 @@ stage.addEventListener('pointerdown',()=>{
     else if(key==='arrowleft'&&au.src){ au.currentTime=Math.max(0,au.currentTime-10); }
     else if(key==='arrowright'&&au.src){ au.currentTime=Math.min(au.duration||0,au.currentTime+10); }
   });
-  addEventListener('beforeunload',()=>{
+  function cleanupMedia(){
     revokeTrackUrl();
     characters.forEach(c=>{ if(c.type==='video'){ try{c.el.pause(); URL.revokeObjectURL(c.el.src);}catch(e){} } });
-  });
+  }
+  addEventListener('beforeunload',cleanupMedia);
+  addEventListener('pagehide',event=>{ if(!event.persisted) cleanupMedia(); });
 
   buildChips(); updateSliderValues(); syncPlay(); syncRec(false); applyDrawnFallback(); setRes(resIdx); restoreAll();
 

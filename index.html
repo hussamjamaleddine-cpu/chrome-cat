@@ -480,12 +480,21 @@ const CB=768;
 const MAX_CHARACTERS=6, PERSIST_PX=512;
 const charBuf=document.createElement('canvas'); charBuf.width=charBuf.height=CB;
 const charGlow=document.createElement('canvas'); charGlow.width=charGlow.height=CB;
-let videoFilterSupported=false;
+let videoFilterSupported=false, videoSaturationSupported=false;
 (function probeVideoFilter(){
   try{
     const scratch=document.createElement('canvas').getContext('2d');
-    if(scratch){ scratch.filter='grayscale(1)'; videoFilterSupported=scratch.filter!=='none'; }
-  }catch(e){ videoFilterSupported=false; }
+    if(scratch && typeof scratch.filter==='string' && scratch.filter==='none'){
+      scratch.filter='grayscale(1)';
+      videoFilterSupported=scratch.filter!=='none';
+    }
+    if(scratch){
+      const previous=scratch.globalCompositeOperation;
+      scratch.globalCompositeOperation='saturation';
+      videoSaturationSupported=scratch.globalCompositeOperation==='saturation';
+      scratch.globalCompositeOperation=previous;
+    }
+  }catch(e){ videoFilterSupported=false; videoSaturationSupported=false; }
 })();
 const characters=[];             // {type:'image',buf,glow,img} | {type:'video',el,thumb,url}
 let activeChar=-1, activeVideoEl=null, pendingCharacters=0;
@@ -616,8 +625,23 @@ function rebakeAllImages(){
 
 // video characters can't get the same per-pixel treatment every frame — that would be
 // the exact shadowBlur/getImageData cost this app spent so much effort removing. Instead:
-// ctx.filter for the grayscale/contrast look (GPU path), a pre-baked gradient for the
-// circular mask, and an oversized low-alpha copy standing in for a real blurred glow.
+// ctx.filter for the grayscale/contrast look (GPU path), a compositing-only saturation
+// fallback when needed, a pre-baked gradient for the circular mask, and an oversized
+// low-alpha copy standing in for a real blurred glow.
+function applyVideoGrayFallback(g,cst,size){
+  if(videoFilterSupported||!videoSaturationSupported) return;
+  g.save();
+  g.globalCompositeOperation='saturation';
+  if(g.globalCompositeOperation!=='saturation'){ g.restore(); return; }
+  g.fillStyle='hsl(0,0%,50%)';
+  g.fillRect(0,0,size,size);
+  g.globalCompositeOperation='overlay';
+  g.globalAlpha=Math.max(0,Math.min(0.5,(cst-1)*0.35));
+  g.fillStyle='#808080';
+  g.fillRect(0,0,size,size);
+  g.globalAlpha=1;
+  g.restore();
+}
 function updateVideoFrame(){
   if(!activeVideoEl || activeVideoEl.readyState<2) return;
   const vw=activeVideoEl.videoWidth||1, vh=activeVideoEl.videoHeight||1;
@@ -629,14 +653,7 @@ function updateVideoFrame(){
   const scale=Math.max(CB/vw,CB/vh), dw=vw*scale, dh=vh*scale;
   g.drawImage(activeVideoEl,(CB-dw)/2,(CB-dh)/2,dw,dh);
   g.restore();
-  if(!videoFilterSupported){
-    g.save();
-    g.globalCompositeOperation='source-in';
-    const gray=Math.round(Math.max(128,Math.min(220,174+cst*18)));
-    g.fillStyle='rgb('+gray+','+Math.min(255,gray+6)+','+Math.min(255,gray+12)+')';
-    g.fillRect(0,0,CB,CB);
-    g.restore();
-  }
+  applyVideoGrayFallback(g,cst,CB);
   g.globalCompositeOperation='destination-in';
   g.drawImage(videoMask,0,0);
   g.globalCompositeOperation='source-over';
@@ -760,9 +777,10 @@ function persistImages(){
       const at=characters.indexOf(slot); if(at<0) return;
       try{
         const tg=slot.thumb.getContext('2d');
-        tg.filter='grayscale(1) contrast(1.4)';
+        if(videoFilterSupported) tg.filter='grayscale(1) contrast(1.4)';
         tg.drawImage(video,0,0,92,92);
-        tg.filter='none';
+        if(videoFilterSupported) tg.filter='none';
+        applyVideoGrayFallback(tg,parseFloat(contrastEl.value),92);
       }catch(e){}
       refreshThumbCanvas(at);
       if(activeChar===-1) activateCharacter(at);

@@ -273,6 +273,49 @@ const SCENES=['hero','echo','kaleido','tunnel','spin','warp','tiles','rush','sho
 const SCENECOST={hero:1,echo:2,kaleido:3,tunnel:2,spin:1,warp:3,tiles:3,rush:1,shock:1,halves:2,orbit:2,pulse:1,pounce:2};
 const SCENEON={};
 SCENES.forEach(s=>SCENEON[s]=true);
+let evolveOn=false, evolvePending=false, evolveNextKick=32, evolvePhase=0;
+function resetEvolveCounter(){
+  evolvePending=false;
+  evolveNextKick=kickCount+32;
+}
+function nextDifferentIndex(current,length){
+  if(length<2) return current;
+  return (current+1+Math.floor(Math.random()*(length-1)))%length;
+}
+function setLookIndex(idx,persist=true){
+  lookIdx=Math.max(0,Math.min(LOOKS.length-1,idx));
+  lookBtn.textContent=LOOKS[lookIdx].name;
+  if(persist) store.set(LOOK_KEY,String(lookIdx)).catch(()=>{});
+}
+function setThemeIndex(idx,persist=true){
+  themeIdx=Math.max(0,Math.min(THEMES.length-1,idx));
+  themeBtn.textContent=THEMES[themeIdx];
+  if(persist) store.set(THEME_KEY,String(themeIdx)).catch(()=>{});
+}
+function syncEvolveChip(){
+  const b=$('evolveChip');
+  if(!b) return;
+  b.classList.toggle('on',evolveOn);
+  b.setAttribute('aria-pressed',String(evolveOn));
+}
+function applyEvolve(){
+  if(!evolveOn||!evolvePending) return;
+  const phase=evolvePhase%3;
+  if(phase===0) setLookIndex(nextDifferentIndex(lookIdx,LOOKS.length),false);
+  else if(phase===1) setThemeIndex(nextDifferentIndex(themeIdx,THEMES.length),false);
+  else {
+    setLookIndex(nextDifferentIndex(lookIdx,LOOKS.length),false);
+    setThemeIndex(nextDifferentIndex(themeIdx,THEMES.length),false);
+  }
+  evolvePhase=(evolvePhase+1)%3;
+  evolvePending=false;
+  evolveNextKick=Math.max(evolveNextKick,kickCount+32);
+}
+function maybeQueueEvolve(){
+  if(!evolveOn||evolvePending||kickCount<evolveNextKick) return;
+  evolvePending=true;
+  while(evolveNextKick<=kickCount) evolveNextKick+=32;
+}
 
 /* ---------------- audio ---------------- */
 let ac=null,analyser=null,srcNode=null,freq=null,recDest=null;
@@ -328,6 +371,7 @@ function detect(now){
 function onHit(kind,e,chaos,now){
   if(kind==='kick'){
     kickCount++;
+    maybeQueueEvolve();
     if(FX.shake&&!reduced){ shakeX=(Math.random()<0.5?-1:1)*e*15*chaos; shakeY=(Math.random()<0.5?-1:1)*e*11*chaos; }
     if(Math.random()<0.55*chaos+0.2) rotStep+=(Math.random()<0.5?-1:1)*(Math.PI/22)*(0.5+e);
     if(FX.invert&&kickCount%4===0&&Math.random()<chaos) invertLeft=2;
@@ -503,8 +547,8 @@ let videoFilterSupported=false, videoSaturationSupported=false;
     }
   }catch(e){ videoFilterSupported=false; videoSaturationSupported=false; }
 })();
-const characters=[];             // {type:'image',buf,glow,img} | {type:'video',el,thumb,url}
-let activeChar=-1, activeVideoEl=null, pendingCharacters=0;
+const characters=[];             // {type:'image',buf,glow,img} | {type:'video',el,thumb,url} | {type:'animated',decoder,frame,thumb}
+let activeChar=-1, activeVideoEl=null, activeAnimatedSlot=null, pendingCharacters=0;
 function reserveCharacterSlot(){
   if(characters.length+pendingCharacters>=MAX_CHARACTERS){
     setStatus('Maximum '+MAX_CHARACTERS+' characters. Remove one first.','error');
@@ -584,11 +628,160 @@ function releaseSlot(slot){
     try{slot.el.removeAttribute('src'); slot.el.load();}catch(e){}
     slot.url='';
     if(slot.thumb){ slot.thumb.width=slot.thumb.height=0; }
+  }else if(slot.type==='animated'){
+    try{if(slot.frame) slot.frame.close();}catch(e){}
+    try{if(slot.decoder) slot.decoder.close();}catch(e){}
+    slot.frame=null; slot.decoder=null; slot.closed=true;
+    if(slot.thumb){ slot.thumb.width=slot.thumb.height=0; }
   }else{
     if(slot.buf){slot.buf.width=slot.buf.height=0;}
     if(slot.glow){slot.glow.width=slot.glow.height=0;}
     slot.buf=null; slot.glow=null; slot.img=null;
   }
+}
+function characterLoadedStatus(){
+  return characters.length+' character'+(characters.length===1?'':'s')+' loaded';
+}
+function finishCharacter(slot,statusMessage=''){
+  characters.push(slot); releaseCharacterReservation();
+  const idx=characters.length-1;
+  addThumbChip(idx);
+  if(characters.length===1) activateCharacter(0);
+  setStatus(statusMessage||characterLoadedStatus(),statusMessage?'busy':'success');
+}
+function frameDurationMs(frame){
+  const ms=frame&&Number.isFinite(frame.duration)?frame.duration/1000:100;
+  return Math.max(20,Math.min(10000,ms||100));
+}
+function paintAnimatedThumbnail(slot){
+  if(!slot||!slot.frame||!slot.thumb) return;
+  try{
+    const tg=slot.thumb.getContext('2d');
+    tg.clearRect(0,0,92,92); tg.fillStyle='#000'; tg.fillRect(0,0,92,92);
+    if(videoFilterSupported) tg.filter='grayscale(1) contrast(1.4)';
+    tg.drawImage(slot.frame,0,0,92,92);
+    if(videoFilterSupported) tg.filter='none';
+    applyVideoGrayFallback(tg,parseFloat(contrastEl.value),92);
+  }catch(e){}
+}
+function asciiBytes(bytes,start,length){
+  let out='';
+  for(let i=0;i<length&&start+i<bytes.length;i++) out+=String.fromCharCode(bytes[start+i]);
+  return out;
+}
+function skipImageSubBlocks(bytes,pos){
+  while(pos<bytes.length){
+    const size=bytes[pos++];
+    if(!size) break;
+    pos+=size;
+  }
+  return pos;
+}
+function detectAnimatedGif(bytes){
+  if(bytes.length<13||!/^GIF8[79]a$/.test(asciiBytes(bytes,0,6))) return false;
+  let pos=13, frames=0;
+  const packed=bytes[10];
+  if(packed&0x80) pos+=3*(1<<((packed&7)+1));
+  while(pos<bytes.length){
+    const marker=bytes[pos++];
+    if(marker===0x3b) break;
+    if(marker===0x2c){
+      frames++;
+      if(frames>1) return true;
+      if(pos+9>bytes.length) return false;
+      const localPacked=bytes[pos+8]; pos+=9;
+      if(localPacked&0x80) pos+=3*(1<<((localPacked&7)+1));
+      if(pos>=bytes.length) return false;
+      pos++;
+      pos=skipImageSubBlocks(bytes,pos);
+    }else if(marker===0x21){
+      if(pos>=bytes.length) return false;
+      pos++;
+      pos=skipImageSubBlocks(bytes,pos);
+    }else return false;
+  }
+  return false;
+}
+function detectAnimatedWebp(bytes){
+  if(bytes.length<16||asciiBytes(bytes,0,4)!=='RIFF'||asciiBytes(bytes,8,4)!=='WEBP') return false;
+  let pos=12;
+  while(pos+8<=bytes.length){
+    const chunk=asciiBytes(bytes,pos,4);
+    const size=(bytes[pos+4]|(bytes[pos+5]<<8)|(bytes[pos+6]<<16)|(bytes[pos+7]<<24))>>>0;
+    if(chunk==='ANMF') return true;
+    if(chunk==='VP8X'&&pos+8<bytes.length&&(bytes[pos+8]&0x02)) return true;
+    pos+=8+size+(size&1);
+  }
+  return false;
+}
+async function detectAnimatedSource(file){
+  try{
+    const bytes=new Uint8Array(await file.arrayBuffer());
+    const type=file.type.toLowerCase();
+    if(type==='image/gif') return detectAnimatedGif(bytes);
+    if(type==='image/webp') return detectAnimatedWebp(bytes);
+  }catch(e){}
+  return false;
+}
+async function tryAnimatedCharacter(file,knownAnimated=false){
+  if(typeof ImageDecoder!=='function') return {unsupported:knownAnimated};
+  const type=file.type.toLowerCase();
+  let decoder=null, frame=null;
+  try{
+    if(typeof ImageDecoder.isTypeSupported==='function' && !(await ImageDecoder.isTypeSupported(type))) return {unsupported:knownAnimated};
+    decoder=new ImageDecoder({data:await file.arrayBuffer(),type});
+    if(decoder.tracks&&decoder.tracks.ready) await decoder.tracks.ready;
+    if(decoder.completed) await decoder.completed;
+    const track=decoder.tracks&&decoder.tracks.selectedTrack;
+    const frameCount=track&&Number(track.frameCount)||1;
+    knownAnimated=knownAnimated||!!track&&(track.animated===true||frameCount>1);
+    if(!knownAnimated){ decoder.close(); return {unsupported:false}; }
+    const first=await decoder.decode({frameIndex:0});
+    frame=first&&first.image;
+    if(!frame) throw new Error('No animated frame');
+    const slot={type:'animated',decoder,frame,frameIndex:0,frameCount,thumb:document.createElement('canvas'),nextFrameAt:performance.now()+frameDurationMs(frame),pending:false,closed:false,failed:false};
+    frame=null;
+    slot.thumb.width=slot.thumb.height=92;
+    paintAnimatedThumbnail(slot);
+    return {slot,unsupported:false};
+  }catch(e){
+    try{if(frame) frame.close();}catch(e2){}
+    try{if(decoder) decoder.close();}catch(e2){}
+    return {unsupported:knownAnimated};
+  }
+}
+function updateAnimatedFrame(now){
+  const slot=activeAnimatedSlot;
+  if(!slot||slot.closed||slot.failed||!slot.decoder||slot.pending||now<slot.nextFrameAt) return;
+  slot.pending=true;
+  const next=(slot.frameIndex+1)%slot.frameCount;
+  slot.decoder.decode({frameIndex:next}).then(result=>{
+    if(!result||!result.image) throw new Error('No animated frame');
+    if(slot.closed){ try{result.image.close();}catch(e){} return; }
+    const old=slot.frame;
+    slot.frame=result.image; slot.frameIndex=next; slot.nextFrameAt=performance.now()+frameDurationMs(result.image);
+    try{if(old) old.close();}catch(e){}
+    paintAnimatedThumbnail(slot);
+    const idx=characters.indexOf(slot); if(idx>-1) refreshThumbCanvas(idx);
+  }).catch(()=>{ slot.failed=true; }).finally(()=>{ slot.pending=false; });
+}
+function addStaticImageCharacter(file,persist,statusMessage='',reserved=false,sessionOnly=false){
+  if(!reserved&&!reserveCharacterSlot()) return;
+  const fr=new FileReader();
+  fr.onerror=()=>{ releaseCharacterReservation(); setStatus('Could not read that image. Please choose another file.','error'); };
+  fr.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const slot=processImageToSlot(img); slot.sessionOnly=!!sessionOnly;
+        finishCharacter(slot,statusMessage);
+        if(persist!==false) persistImages();
+      }catch(err){ releaseCharacterReservation(); setStatus('That image could not be processed. Try a smaller file.','error'); }
+    };
+    img.onerror=()=>{ releaseCharacterReservation(); setStatus('That image could not be decoded. Please choose another file.','error'); };
+    img.src=fr.result;
+  };
+  try{ fr.readAsDataURL(file); }catch(err){ releaseCharacterReservation(); setStatus('Could not read that image. Please choose another file.','error'); }
 }
 function processImageToSlot(img){
   const MAX=768, sc=Math.min(MAX/img.width,MAX/img.height,1);
@@ -650,15 +843,18 @@ function applyVideoGrayFallback(g,cst,size){
   g.restore();
 }
 function updateVideoFrame(){
-  if(!activeVideoEl || activeVideoEl.readyState<2) return;
-  const vw=activeVideoEl.videoWidth||1, vh=activeVideoEl.videoHeight||1;
+  const source=activeVideoEl||activeAnimatedSlot?.frame;
+  if(!source) return;
+  const vw=source.videoWidth||source.displayWidth||source.codedWidth||1;
+  const vh=source.videoHeight||source.displayHeight||source.codedHeight||1;
+  if(activeVideoEl&&activeVideoEl.readyState<2) return;
   const cst=parseFloat(contrastEl.value);
   const g=charBuf.getContext('2d');
   g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,CB,CB);
   g.save();
   if(videoFilterSupported) g.filter='grayscale(1) contrast('+(1.05+cst*0.35)+') brightness(1.05)';
   const scale=Math.max(CB/vw,CB/vh), dw=vw*scale, dh=vh*scale;
-  g.drawImage(activeVideoEl,(CB-dw)/2,(CB-dh)/2,dw,dh);
+  g.drawImage(source,(CB-dw)/2,(CB-dh)/2,dw,dh);
   g.restore();
   applyVideoGrayFallback(g,cst,CB);
   g.globalCompositeOperation='destination-in';
@@ -674,13 +870,15 @@ function updateVideoFrame(){
 function activateCharacter(idx){
   if(idx<0||idx>=characters.length) return;
   if(activeVideoEl) activeVideoEl.pause();
+  activeVideoEl=null; activeAnimatedSlot=null;
   const slot=characters[idx];
   activeChar=idx;
   if(slot.type==='video'){
     activeVideoEl=slot.el;
     try{ slot.el.play().catch(()=>{}); }catch(e){}
+  } else if(slot.type==='animated'){
+    activeAnimatedSlot=slot;
   } else {
-    activeVideoEl=null;
     const g=charBuf.getContext('2d'); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,CB,CB); g.drawImage(slot.buf,0,0);
     const gg=charGlow.getContext('2d'); gg.setTransform(1,0,0,1,0,0); gg.clearRect(0,0,CB,CB); gg.drawImage(slot.glow,0,0);
   }
@@ -695,8 +893,8 @@ function addThumbChip(idx){
   div.setAttribute('aria-label','Select character '+(idx+1));
   const cv=document.createElement('canvas'); cv.width=cv.height=92;
   div.appendChild(cv);
-  if(slot.type==='video'){
-    const tag=document.createElement('div'); tag.className='tag'; tag.textContent='VID';
+  if(slot.type!=='image'){
+    const tag=document.createElement('div'); tag.className='tag'; tag.textContent=slot.type==='animated'?'ANM':'VID';
     div.appendChild(tag);
   }
   const rm=document.createElement('div'); rm.className='rm'; rm.textContent='×';
@@ -728,7 +926,7 @@ function refreshActiveHighlight(){
     characters.splice(idx,1);
     catStrip.innerHTML='';
     characters.forEach((_,i)=>addThumbChip(i));
-    if(characters.length===0){ activeChar=-1; activeVideoEl=null; applyDrawnFallback(); }
+    if(characters.length===0){ activeChar=-1; activeVideoEl=null; activeAnimatedSlot=null; applyDrawnFallback(); }
     else if(wasActive){ activateCharacter(Math.min(idx,characters.length-1)); }
     else { activeChar=activeChar>idx?activeChar-1:activeChar; refreshActiveHighlight(); }
     releaseSlot(slot);
@@ -737,7 +935,7 @@ function refreshActiveHighlight(){
   }
 
 function persistImages(){
-  const imgs=characters.filter(c=>c.type==='image'&&c.img).slice(0,MAX_CHARACTERS);
+  const imgs=characters.filter(c=>c.type==='image'&&c.img&&!c.sessionOnly).slice(0,MAX_CHARACTERS);
   let payload;
   try{ payload=JSON.stringify(imgs.map(c=>sourceThumb(c.img,PERSIST_PX))); }
   catch(e){ setStatus('Could not prepare characters for saving.','error'); return; }
@@ -746,26 +944,21 @@ function persistImages(){
     setStatus(quota?'Storage full — some characters were not saved. Remove one and try again.':'Could not save characters.','error');
   });
 }
-  function addImageCharacter(file,persist){
+  async function addImageCharacter(file,persist){
     if(!file||!file.type.startsWith('image/')||!reserveCharacterSlot()) return;
-    const fr=new FileReader();
-    fr.onerror=()=>{ releaseCharacterReservation(); setStatus('Could not read that image. Please choose another file.','error'); };
-    fr.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        try{
-          characters.push(processImageToSlot(img));
-          releaseCharacterReservation();
-          addThumbChip(characters.length-1);
-          if(characters.length===1) activateCharacter(0);
-          if(persist!==false) persistImages();
-          setStatus(characters.length+' character'+(characters.length===1?'':'s')+' loaded','success');
-        }catch(err){ releaseCharacterReservation(); setStatus('That image could not be processed. Try a smaller file.','error'); }
-      };
-      img.onerror=()=>{ releaseCharacterReservation(); setStatus('That image could not be decoded. Please choose another file.','error'); };
-      img.src=fr.result;
-    };
-    try{ fr.readAsDataURL(file); }catch(err){ releaseCharacterReservation(); setStatus('Could not read that image. Please choose another file.','error'); }
+    const animatedCandidate=/image\/(gif|webp)/i.test(file.type);
+    if(animatedCandidate){
+      const knownAnimated=await detectAnimatedSource(file);
+      const result=await tryAnimatedCharacter(file,knownAnimated);
+      if(result.slot){
+        finishCharacter(result.slot);
+        return;
+      }
+      const fallbackMessage=result.unsupported?'Animated images are not supported in this browser — using the first frame.':'';
+      addStaticImageCharacter(file,result.unsupported?false:persist,fallbackMessage,true,result.unsupported);
+      return;
+    }
+    addStaticImageCharacter(file,persist,'',true);
   }
 
   function addVideoCharacter(file){
@@ -830,6 +1023,7 @@ function persistImages(){
       if(r&&r.value){const o=JSON.parse(r.value);
         for(const k in FX) if(k in o) FX[k]=o[k]?1:0;
         if(o.__scenes) for(const s in o.__scenes) if(s in SCENEON) SCENEON[s]=!!o.__scenes[s];
+        if('__evolve' in o) evolveOn=!!o.__evolve;
         buildChips();}}catch(e){}
 
     try{
@@ -859,9 +1053,9 @@ function persistImages(){
     store.set(SETTINGS_KEY,JSON.stringify(o)).catch(()=>{});
   }
   function saveFX(){
-
   const o={}; for(const k in FX) o[k]=FX[k];
   o.__scenes={}; for(const s in SCENEON) o.__scenes[s]=SCENEON[s];
+  o.__evolve=!!evolveOn;
   store.set(FX_KEY,JSON.stringify(o)).catch(()=>{});
 }
 
@@ -1128,6 +1322,7 @@ function activeScenes(){
 }
 function cutTo(next,t){
   prevScene=scene; scene=next; sceneStartKick=kickCount; sceneStartT=t;
+  applyEvolve();
   if(characters.length>1){                    // the actual "drop": character changes with the scene cut
     activeChar=(activeChar+1)%characters.length;
     activateCharacter(activeChar);
@@ -1421,7 +1616,8 @@ function frame(t){
   governor(t);
   detect(t);
   direct(t);
-  if(activeVideoEl) updateVideoFrame();
+  if(activeAnimatedSlot) updateAnimatedFrame(t);
+  if(activeVideoEl||activeAnimatedSlot) updateVideoFrame();
   const L=look();
   const punch=parseFloat(punchEl.value);
   const k=Math.min(1.4,BANDS.kick.env*punch), s=Math.min(1.2,BANDS.snare.env*punch);
@@ -1641,6 +1837,11 @@ function buildChips(){
     b.addEventListener('click',()=>{ FX[k]=FX[k]?0:1; b.classList.toggle('on',!!FX[k]); b.setAttribute('aria-pressed',String(!!FX[k])); saveFX(); });
     fg.appendChild(b);
   }
+  const evolve=document.createElement('button');
+  evolve.id='evolveChip'; evolve.className='chip'; evolve.textContent='Evolve';
+  evolve.setAttribute('aria-label','Toggle Auto-Evolve');
+  evolve.addEventListener('click',()=>{ evolveOn=!evolveOn; syncEvolveChip(); resetEvolveCounter(); saveFX(); });
+  fg.appendChild(evolve); syncEvolveChip();
   const sg=$('scenegrid'); sg.innerHTML='';
   SCENES.forEach(s=>{
     const b=document.createElement('button');
@@ -1745,7 +1946,7 @@ fwd10.addEventListener('click',()=>{ au.currentTime=Math.min(au.duration||0,au.c
 
   $('clearCat').addEventListener('click',()=>{
     const old=characters.splice(0,characters.length);
-    activeChar=-1; activeVideoEl=null;
+    activeChar=-1; activeVideoEl=null; activeAnimatedSlot=null;
     catStrip.innerHTML='';
     applyDrawnFallback();
     old.forEach(releaseSlot);
@@ -1754,14 +1955,12 @@ fwd10.addEventListener('click',()=>{ au.currentTime=Math.min(au.duration||0,au.c
   });
 
 lookBtn.addEventListener('click',()=>{
-  lookIdx=(lookIdx+1)%LOOKS.length;
-  lookBtn.textContent=LOOKS[lookIdx].name;
-  store.set(LOOK_KEY,String(lookIdx)).catch(()=>{});
+  setLookIndex((lookIdx+1)%LOOKS.length);
+  resetEvolveCounter();
 });
 themeBtn.addEventListener('click',()=>{
-  themeIdx=(themeIdx+1)%THEMES.length;
-  themeBtn.textContent=THEMES[themeIdx];
-  store.set(THEME_KEY,String(themeIdx)).catch(()=>{});
+  setThemeIndex((themeIdx+1)%THEMES.length);
+  resetEvolveCounter();
 });
 contrastEl.addEventListener('input',()=>{ buildVignette(); });
 contrastEl.addEventListener('change',()=>{ buildVignette(); rebakeAllImages(); });
@@ -1843,7 +2042,7 @@ stage.addEventListener('pointerdown',()=>{
   });
   function cleanupMedia(){
     revokeTrackUrl();
-    characters.forEach(c=>{ if(c.type==='video') releaseSlot(c); });
+    characters.forEach(c=>{ if(c.type==='video'||c.type==='animated') releaseSlot(c); });
   }
   addEventListener('beforeunload',cleanupMedia);
   addEventListener('pagehide',event=>{ if(!event.persisted) cleanupMedia(); });

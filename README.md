@@ -13,3 +13,5 @@ This repository is intended to be published directly from the `main` branch and 
 ## Browser permissions and limitations
 
 Audio, image, and video files are processed locally in the browser. The page uses responsive sizing, safe-area insets, touch-friendly controls, iOS share/download fallbacks, and dynamic viewport handling for phones and tablets. Playback and recording availability depends on browser support for Web Audio, Fullscreen, canvas capture, and MediaRecorder. Mobile browsers may require a manual Play tap because of autoplay policies, and iOS may present a Share flow instead of a direct recording download. The app includes fallback status messages when a capability or media file is unavailable.
+
+Saved image characters are persisted as downscaled JPEG source copies to avoid repeated contrast processing and storage overuse. As a known limitation of this compact archive format, transparent PNG backgrounds are flattened during persistence and may appear with a dark background after reload.

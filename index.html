@@ -477,7 +477,7 @@ function buildVignette(){
    SAME two canvases regardless of source, so none of the rendering code below needs to
    know whether the active character is a photo, a video, or the procedural fallback. */
 const CB=768;
-const MAX_CHARACTERS=6, PERSIST_PX=384;
+const MAX_CHARACTERS=6, PERSIST_PX=512;
 const charBuf=document.createElement('canvas'); charBuf.width=charBuf.height=CB;
 const charGlow=document.createElement('canvas'); charGlow.width=charGlow.height=CB;
 const characters=[];             // {type:'image',buf,glow,img} | {type:'video',el,thumb,url}
@@ -1800,7 +1800,7 @@ stage.addEventListener('pointerdown',()=>{
   });
   function cleanupMedia(){
     revokeTrackUrl();
-    characters.forEach(releaseSlot);
+    characters.forEach(c=>{ if(c.type==='video') releaseSlot(c); });
   }
   addEventListener('beforeunload',cleanupMedia);
   addEventListener('pagehide',event=>{ if(!event.persisted) cleanupMedia(); });

@@ -200,18 +200,20 @@ const sensEl=$('sens'), punchEl=$('punch'), chaosEl=$('chaos'), holdEl=$('hold')
 
 /* ---------------- resolution ladder (9:16 always) ---------------- */
 const RES=[[360,640],[480,854],[600,1066],[720,1280],[1080,1920]];
-let resIdx=4, W=1080, H=1920, renderDpr=1;
+let resIdx=4, W=1080, H=1920, renderDpr=1, renderDprOverride=null;
 function getRenderDpr(){
+  if(renderDprOverride!==null) return renderDprOverride;
   if(isTouch || !matchMedia('(min-width:900px) and (min-height:700px)').matches) return 1;
   return Math.min(window.devicePixelRatio||1,2);
 }
 function syncCanvasBacking(){
   const next=Math.max(1,getRenderDpr());
   const bw=Math.max(1,Math.round(W*next)), bh=Math.max(1,Math.round(H*next));
-  if(cvs.width===bw && cvs.height===bh && renderDpr===next) return;
+  const resized=(cvs.width!==bw||cvs.height!==bh);
   renderDpr=next;
-  cvs.width=bw; cvs.height=bh;
+  if(resized){ cvs.width=bw; cvs.height=bh; }
   ctx.setTransform(renderDpr,0,0,renderDpr,0,0);
+  return resized;
 }
 function setRes(i){
   resIdx=Math.max(0,Math.min(RES.length-1,i));
@@ -219,15 +221,30 @@ function setRes(i){
   syncCanvasBacking(); buildVignette(); fitBox();
 }
 function fitBox(){
-  syncCanvasBacking();
   const r=stage.getBoundingClientRect();
   const s=Math.min(r.width/9,r.height/16);
   cvs.style.width=Math.floor(s*9)+'px';
   cvs.style.height=Math.floor(s*16)+'px';
 }
+let dprWatch=null;
+function watchDpr(){
+  if(dprWatch){
+    if(dprWatch.removeEventListener) dprWatch.removeEventListener('change',onDprChange);
+    else if(dprWatch.removeListener) dprWatch.removeListener(onDprChange);
+  }
+  dprWatch=matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)');
+  if(dprWatch.addEventListener) dprWatch.addEventListener('change',onDprChange);
+  else if(dprWatch.addListener) dprWatch.addListener(onDprChange);
+}
+function onDprChange(){
+  if(syncCanvasBacking()) buildVignette();
+  fitBox();
+  watchDpr();
+}
 addEventListener('resize',fitBox);
 if(window.visualViewport) window.visualViewport.addEventListener('resize',fitBox,{passive:true});
 addEventListener('orientationchange',()=>setTimeout(fitBox,120));
+watchDpr();
 
 /* ---------------- storage ---------------- */
   const CAT_KEY='chromecat:character', LOOK_KEY='chromecat:look', FX_KEY='chromecat:fx', THEME_KEY='chromecat:theme', SETTINGS_KEY='chromecat:settings';
@@ -1526,11 +1543,13 @@ function pickMime(){
   for(const m of list) if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m)) return m;
   return '';
 }
-let qModeBeforeRec=null, resIdxBeforeRec=4, liteBeforeRec=false;
+let qModeBeforeRec=null, resIdxBeforeRec=4, liteBeforeRec=false, renderDprBeforeRec=1, renderDprOverrideBeforeRec=null;
   function restoreQualityAfterRec(){
     if(qModeBeforeRec===null) return;
     qMode=qModeBeforeRec;
     lite=liteBeforeRec;
+    renderDprOverride=renderDprOverrideBeforeRec;
+    renderDpr=renderDprBeforeRec;
     qi=Math.max(0,QMODES.map(x=>x.toLowerCase()).indexOf(qMode));
     qualBtn.textContent=QMODES[qi];
     setRes(resIdxBeforeRec);
@@ -1548,6 +1567,8 @@ let qModeBeforeRec=null, resIdxBeforeRec=4, liteBeforeRec=false;
     // exported clips should always be full quality, even if the live preview had
     // stepped down resolution to stay smooth — force max, restore after
     qModeBeforeRec=qMode; resIdxBeforeRec=resIdx; liteBeforeRec=lite;
+    renderDprBeforeRec=renderDpr; renderDprOverrideBeforeRec=renderDprOverride;
+    renderDprOverride=1; renderDpr=1; syncCanvasBacking();
     qMode='high'; lite=false; setRes(RES.length-1); qi=1; qualBtn.textContent='High';
     try{ if(ac.state!=='running') await ac.resume(); }catch(e){}
     const mime=pickMime();
